@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5fa5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Landed Cost">
+<title>Landed Cost Calculator</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Layout idea: short input cards on the left, a sticky result card on the right; on phones the result follows the inputs and a slim totals bar stays at the bottom. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --ink: #14202b;
+  --muted: #566677;
+  --line: #d3dae1;
+  --accent: #0b5fa5;
+  --accent-ink: #ffffff;
+  --seg-goods: #0b5fa5;
+  --seg-ship: #2a9d8f;
+  --seg-duty: #d9961a;
+  --seg-tax: #c8553d;
+  --seg-fees: #7a6bb0;
+  --good: #1d7a4a;
+  --bad: #b3261e;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e151c; --surface: #16202a; --ink: #e6edf3; --muted: #92a2b2; --line: #2a3745;
+    --accent: #5aa9e6; --accent-ink: #0b1620;
+    --seg-goods: #5aa9e6; --seg-ship: #4fc3b3; --seg-duty: #e8b04a; --seg-tax: #e57f69; --seg-fees: #a99bdc;
+    --good: #5fc28a; --bad: #f0877f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e151c; --surface: #16202a; --ink: #e6edf3; --muted: #92a2b2; --line: #2a3745;
+  --accent: #5aa9e6; --accent-ink: #0b1620;
+  --seg-goods: #5aa9e6; --seg-ship: #4fc3b3; --seg-duty: #e8b04a; --seg-tax: #e57f69; --seg-fees: #a99bdc;
+  --good: #5fc28a; --bad: #f0877f;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font);
+  font-size: 16px; line-height: 1.4; padding-bottom: 92px;
+  -webkit-text-size-adjust: 100%;
+}
+.num, .val, td.n, .tiles b { font-variant-numeric: tabular-nums; }
+
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 1040px; margin: 0 auto; padding: 16px 16px 4px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+}
+h1 { font-size: 1.35rem; line-height: 1.2; margin: 0; font-weight: 650; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 12px 16px 24px; }
+.grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+.col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (min-width: 860px) {
+  .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 430px); align-items: start; }
+  .results-col { position: sticky; top: 12px; }
+  body { padding-bottom: 24px; }
+  .bar-fixed { display: none !important; }
+}
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 16px; min-width: 0; }
+.card h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.card h2 small { font-weight: 400; color: var(--muted); font-size: 0.82rem; }
+.fields { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fields .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field > label { font-size: 0.85rem; color: var(--muted); }
+
+.inp {
+  display: flex; align-items: center; min-height: 48px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.inp:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.inp .pre { padding-left: 12px; color: var(--muted); font-weight: 600; }
+.inp .suf { padding-right: 12px; color: var(--muted); font-weight: 600; }
+.inp input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink);
+  font: inherit; font-size: 1.05rem; padding: 11px 10px 11px 6px; outline: 0;
+}
+.inp input.plain { padding-left: 12px; }
+select {
+  font: inherit; font-size: 1.05rem; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; min-height: 48px; width: 100%;
+}
+select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 0.98rem; }
+.check input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: none; }
+
+button {
+  font: inherit; cursor: pointer; border-radius: 10px; min-height: 46px; padding: 0 16px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.small { min-height: 38px; padding: 0 12px; font-size: 0.9rem; }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+
+.rate-row { display: flex; gap: 8px; align-items: stretch; }
+.rate-row .inp { flex: 1; min-width: 0; }
+.note { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
+.note.warn { color: var(--bad); }
+
+/* result */
+.hero { background: var(--accent); color: var(--accent-ink); border-radius: 14px; padding: 16px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; }
+.hero .lbl { font-size: 0.82rem; opacity: 0.9; }
+.hero .val { font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+.hero .main .val { font-size: 2rem; }
+.hero .side .val { font-size: 1.25rem; margin-top: 2px; }
+.hero .side { text-align: right; align-self: end; }
+
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tiles > div { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; background: var(--bg); }
+.tiles .lbl { display: block; font-size: 0.78rem; color: var(--muted); }
+.tiles b { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+.profit .sub { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
+.addsell { width: 100%; border-style: dashed; color: var(--muted); }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+.stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.stack span { display: block; height: 100%; }
+@media (prefers-reduced-motion: no-preference) { .stack span { transition: width .25s ease; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0 0; font-size: 0.8rem; color: var(--muted); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+td { padding: 7px 0; border-top: 1px solid var(--line); }
+td.n { text-align: right; white-space: nowrap; padding-left: 10px; }
+td small { color: var(--muted); }
+tr.sub td { font-weight: 600; }
+tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
+details.info { margin-top: 10px; font-size: 0.88rem; color: var(--muted); }
+details.info summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+details.info p { margin: 4px 0 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.status { font-size: 0.85rem; color: var(--muted); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--bg); }
+.chip button { border: 0; border-radius: 0; min-height: 38px; background: transparent; font-size: 0.9rem; padding: 0 12px; }
+.chip button.x { color: var(--muted); padding: 0 10px; border-left: 1px solid var(--line); }
+.chip small { color: var(--muted); margin-left: 6px; }
+details.savepre { margin-top: 8px; }
+details.savepre summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; min-height: 36px; display: flex; align-items: center; }
+.save-row { display: flex; gap: 8px; margin-top: 6px; }
+.save-row .inp { flex: 1; }
+.hist { list-style: none; margin: 0; padding: 0; }
+.hist li { display: flex; gap: 8px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+.hist li:first-child { border-top: 0; padding-top: 0; }
+.hist .meta { flex: 1; min-width: 0; }
+.hist .meta b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.hist .meta span { color: var(--muted); font-size: 0.82rem; }
+.empty { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+.bar-fixed {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; width: 100%;
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--surface);
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); min-height: 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: left;
+}
+.bar-fixed .lbl { display: block; font-size: 0.72rem; color: var(--muted); }
+.bar-fixed .val { display: block; font-weight: 700; font-size: 1rem; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Landed Cost</h1>
+  <button type="button" class="small" id="btnInstall" hidden>Install app</button>
+</div>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="col">
+
+      <section class="card" aria-labelledby="h-prod">
+        <h2 id="h-prod">Product</h2>
+        <div class="fields">
+          <div class="field full">
+            <label for="name">Name (optional)</label>
+            <div class="inp"><input class="plain" type="text" id="name" data-k="name" placeholder="LED panel lights" autocomplete="off"></div>
+          </div>
+          <div class="field">
+            <label for="price">Cost per piece</label>
+            <div class="inp"><span class="pre sym-buy">$</span><input class="num" type="text" id="price" data-k="price" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+          <div class="field">
+            <label for="qty">Quantity</label>
+            <div class="inp"><input class="num plain" type="text" id="qty" data-k="qty" inputmode="numeric" placeholder="0" autocomplete="off"><span class="suf">pcs</span></div>
+          </div>
+          <div class="field full">
+            <label for="sell">Sell price per piece <span style="opacity:.8">(for profit)</span></label>
+            <div class="inp"><span class="pre sym-loc">$</span><input class="num" type="text" id="sell" data-k="sell" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-cur">
+        <h2 id="h-cur">Currency</h2>
+        <div class="fields">
+          <div class="field">
+            <label for="buyCur">Supplier charges in</label>
+            <select id="buyCur" data-k="buyCur"></select>
+          </div>
+          <div class="field">
+            <label for="localCur">I sell and pay fees in</label>
+            <select id="localCur" data-k="localCur"></select>
+          </div>
+          <div class="field full" id="rateRow">
+            <label for="fx" id="fxLabel">Exchange rate</label>
+            <div class="rate-row">
+              <div class="inp"><span class="pre" id="fxPre">1 USD =</span><input class="num" type="text" id="fx" data-k="fx" inputmode="decimal" placeholder="0.0000" autocomplete="off"><span class="suf" id="fxSuf">CAD</span></div>
+              <button type="button" class="primary" id="btnRate">Update</button>
+            </div>
+            <p class="note" id="fxNote"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-ship">
+        <h2 id="h-ship">Shipping <small class="cur-buy">USD</small></h2>
+        <div class="fields">
+          <div class="field">
+            <label for="freight">Freight</label>
+            <div class="inp"><span class="pre sym-buy">$</span><input class="num" type="text" id="freight" data-k="freight" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+          <div class="field">
+            <label for="ins">Insurance</label>
+            <div class="inp"><span class="pre sym-buy">$</span><input class="num" type="text" id="ins" data-k="ins" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-duty">
+        <h2 id="h-duty">Duty and tax</h2>
+        <div class="chips" id="presets"></div>
+        <div class="fields">
+          <div class="field">
+            <label for="duty">Duty</label>
+            <div class="inp"><input class="num plain" type="text" id="duty" data-k="duty" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suf">%</span></div>
+          </div>
+          <div class="field">
+            <label for="tax">Tax (VAT / GST)</label>
+            <div class="inp"><input class="num plain" type="text" id="tax" data-k="tax" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suf">%</span></div>
+          </div>
+          <div class="full check">
+            <input type="checkbox" id="recover" data-k="recover">
+            <label for="recover">I claim the tax back</label>
+          </div>
+        </div>
+        <details class="savepre">
+          <summary>Save these rates</summary>
+          <div class="save-row">
+            <div class="inp"><input class="plain" type="text" id="presetName" placeholder="Name, e.g. Electronics" autocomplete="off"></div>
+            <button type="button" id="btnPreset">Save</button>
+          </div>
+        </details>
+      </section>
+
+      <section class="card" aria-labelledby="h-fees">
+        <h2 id="h-fees">Local costs <small class="cur-loc">USD</small></h2>
+        <div class="fields">
+          <div class="field">
+            <label for="broker">Brokerage and port</label>
+            <div class="inp"><span class="pre sym-loc">$</span><input class="num" type="text" id="broker" data-k="broker" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+          <div class="field">
+            <label for="deliv">Delivery and other</label>
+            <div class="inp"><span class="pre sym-loc">$</span><input class="num" type="text" id="deliv" data-k="deliv" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col results-col" id="results">
+      <section class="hero" aria-live="polite" aria-label="Landed cost">
+        <div class="main"><div class="lbl">Landed cost per piece</div><div class="val" id="outPer"></div></div>
+        <div class="side"><div class="lbl">Total</div><div class="val" id="outTotal"></div></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-profit">
+        <h2 id="h-profit">Gross profit</h2>
+        <div class="profit" id="profit"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-break">
+        <h2 id="h-break">Breakdown <small class="cur-loc">USD</small></h2>
+        <div class="stack" id="stack" role="img" aria-label="Cost shares"></div>
+        <div class="legend" id="legend"></div>
+        <table id="tbl" style="margin-top:10px"><tbody></tbody></table>
+        <details class="info">
+          <summary>What is CIF?</summary>
+          <p>Cost + Insurance + Freight. It is the value customs charges duty on.</p>
+        </details>
+        <div class="actions" style="margin-top:14px">
+          <button type="button" class="primary" id="btnSave">Save</button>
+          <button type="button" id="btnCopy">Copy</button>
+          <button type="button" class="ghost" id="btnReset">Clear all</button>
+          <span class="status" id="status" role="status"></span>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h-his">
+        <h2 id="h-his">Saved</h2>
+        <ul class="hist" id="hist"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<button type="button" class="bar-fixed" id="bar" aria-label="Jump to full results">
+  <span><span class="lbl">Per piece</span><span class="val" id="barPer"></span></span>
+  <span><span class="lbl">Total</span><span class="val" id="barTotal"></span></span>
+  <span><span class="lbl">Gross profit</span><span class="val" id="barProfit"></span></span>
+</button>
+
+<script>
+(function () {
+  "use strict";
+
+  var LIVE = true; /* true in the installed app, where live exchange rates can be fetched */
+  var CURRENCIES = ["USD","CAD","EUR","GBP","AUD","NZD","CNY","HKD","TWD","JPY","KRW","INR","PKR","BDT","VND","THB","IDR","MYR","SGD","PHP","AED","SAR","TRY","EGP","ZAR","NGN","MXN","BRL","CHF","SEK","NOK","DKK","PLN"];
+  var DEFAULTS = {
+    name: "", price: "12.50", qty: "500", sell: "28",
+    buyCur: "USD", localCur: "USD", fx: "1", fxSrc: "", fxDate: "",
+    freight: "850", ins: "45", duty: "6.5", tax: "5", recover: false,
+    broker: "120", deliv: "200"
+  };
+  var KEY = "lcc.v2";
+
+  /* ---------- pure calculation ---------- */
+  function num(v) {
+    var n = parseFloat(String(v == null ? "" : v).replace(/,/g, ""));
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+  function calc(s) {
+    var fx = s.buyCur === s.localCur ? 1 : num(s.fx);
+    var qty = num(s.qty), price = num(s.price);
+    var goods = price * qty * fx;
+    var freight = num(s.freight) * fx;
+    var ins = num(s.ins) * fx;
+    var cif = goods + freight + ins;
+    var duty = cif * num(s.duty) / 100;
+    var tax = (cif + duty) * num(s.tax) / 100;
+    var broker = num(s.broker), deliv = num(s.deliv);
+    var paid = cif + duty + tax + broker + deliv;
+    var landed = paid - (s.recover ? tax : 0);
+    var per = qty > 0 ? landed / qty : 0;
+    var sell = num(s.sell);
+    var revenue = sell * qty;
+    var profitTotal = sell > 0 ? revenue - landed : 0;
+    var profit = sell > 0 ? sell - per : 0;
+    return {
+      fx: fx, qty: qty, goods: goods, freight: freight, ins: ins, cif: cif,
+      duty: duty, tax: tax, broker: broker, deliv: deliv, paid: paid,
+      landed: landed, per: per, sell: sell, revenue: revenue,
+      profitTotal: profitTotal, profit: profit,
+      margin: sell > 0 ? profit / sell : 0,
+      markup: per > 0 ? profit / per : 0
+    };
+  }
+
+  /* ---------- storage ---------- */
+  var mem = { presets: [], history: [], rates: {}, state: null };
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && typeof d === "object") {
+          mem.presets = Array.isArray(d.presets) ? d.presets : [];
+          mem.history = Array.isArray(d.history) ? d.history : [];
+          mem.rates = d.rates && typeof d.rates === "object" ? d.rates : {};
+          mem.state = d.state && typeof d.state === "object" ? d.state : null;
+        }
+      }
+    } catch (e) {}
+  }
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch (e) {}
+  }
+  var saveTimer = null;
+  function persistSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { mem.state = state; persist(); }, 300);
+  }
+
+  /* ---------- helpers ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var state = JSON.parse(JSON.stringify(DEFAULTS));
+
+  function money(cur, n) {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: cur, currencyDisplay: "narrowSymbol" }).format(n);
+    } catch (e) { return cur + " " + n.toFixed(2); }
+  }
+  function sym(cur) {
+    try {
+      var parts = new Intl.NumberFormat("en", { style: "currency", currency: cur, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+      for (var i = 0; i < parts.length; i++) if (parts[i].type === "currency") return parts[i].value;
+    } catch (e) {}
+    return cur;
+  }
+  function pct(n) { return (n * 100).toFixed(1) + "%"; }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function shortDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  function setStatus(msg) {
+    var el = $("status");
+    el.textContent = msg;
+    if (msg) setTimeout(function () { if (el.textContent === msg) el.textContent = ""; }, 2500);
+  }
+  function setAll(selector, fn) {
+    var els = document.querySelectorAll(selector);
+    for (var i = 0; i < els.length; i++) fn(els[i]);
+  }
+
+  /* ---------- exchange rate ---------- */
+  var fxLoading = false, fxFailed = false;
+
+  function getJSON(url) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctrl) ctrl.abort(); }, 8000);
+    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(function (res) {
+      clearTimeout(t);
+      if (!res.ok) throw new Error("http " + res.status);
+      return res.json();
+    });
+  }
+  function fetchRate(from, to) {
+    return getJSON("https://open.er-api.com/v6/latest/" + from).then(function (j) {
+      if (j.result !== "success" || !j.rates || !j.rates[to]) throw new Error("no rate");
+      var d = new Date(j.time_last_update_utc);
+      return { rate: j.rates[to], date: isNaN(d) ? new Date().toISOString() : d.toISOString() };
+    }).catch(function () {
+      return getJSON("https://api.frankfurter.dev/v1/latest?base=" + from + "&symbols=" + to).then(function (j) {
+        if (!j.rates || !j.rates[to]) throw new Error("no rate");
+        return { rate: j.rates[to], date: new Date(j.date + "T00:00:00Z").toISOString() };
+      });
+    });
+  }
+  function updateRate() {
+    var from = state.buyCur, to = state.localCur;
+    if (from === to || !LIVE) return;
+    fxLoading = true; fxFailed = false; render();
+    fetchRate(from, to).then(function (r) {
+      if (state.buyCur !== from || state.localCur !== to) return;
+      var rate = Number(r.rate.toPrecision(7));
+      state.fx = String(rate); state.fxSrc = "live"; state.fxDate = r.date;
+      mem.rates[from + to] = { rate: rate, date: r.date };
+      fxLoading = false; fxFailed = false;
+      fillInputs(); render(); persist();
+    }).catch(function () {
+      if (state.buyCur !== from || state.localCur !== to) return;
+      fxLoading = false; fxFailed = true;
+      var c = mem.rates[from + to];
+      if (c && !num(state.fx)) { state.fx = String(c.rate); state.fxSrc = "saved"; state.fxDate = c.date; fillInputs(); }
+      render();
+    });
+  }
+  function onCurrencyChange() {
+    var from = state.buyCur, to = state.localCur;
+    fxFailed = false; fxLoading = false;
+    if (from === to) { state.fx = "1"; state.fxSrc = ""; state.fxDate = ""; }
+    else {
+      var c = mem.rates[from + to];
+      if (c) { state.fx = String(c.rate); state.fxSrc = "saved"; state.fxDate = c.date; }
+      else { state.fx = ""; state.fxSrc = ""; state.fxDate = ""; }
+    }
+    fillInputs(); render();
+    if (from !== to) updateRate();
+  }
+
+  /* ---------- render ---------- */
+  var lastResult = null;
+  function render() {
+    var s = state, r = calc(s), L = s.localCur, B = s.buyCur;
+    lastResult = r;
+
+    setAll(".sym-buy", function (e) { e.textContent = sym(B); });
+    setAll(".sym-loc", function (e) { e.textContent = sym(L); });
+    setAll(".cur-buy", function (e) { e.textContent = B; });
+    setAll(".cur-loc", function (e) { e.textContent = L; });
+
+    var same = B === L;
+    $("rateRow").hidden = same;
+    $("fxPre").textContent = "1 " + B + " =";
+    $("fxSuf").textContent = L;
+    $("btnRate").hidden = !LIVE;
+    $("btnRate").disabled = fxLoading;
+    $("btnRate").textContent = fxLoading ? "Updating" : "Update";
+    var note = $("fxNote"), msg = "", warn = false;
+    if (!same) {
+      if (fxLoading) msg = "Getting today's rate";
+      else if (!num(s.fx)) { msg = LIVE ? (fxFailed ? "No connection. Type a rate." : "Tap Update or type a rate.") : "Type a rate. Live rates work in the installed app."; warn = true; }
+      else if (s.fxSrc === "live") msg = "Live rate, " + shortDate(s.fxDate);
+      else if (s.fxSrc === "saved") msg = (fxFailed ? "Offline. " : "") + "Saved rate from " + shortDate(s.fxDate);
+      else msg = "Your rate";
+    }
+    note.textContent = msg;
+    note.className = "note" + (warn ? " warn" : "");
+
+    $("outPer").textContent = money(L, r.per);
+    $("outTotal").textContent = money(L, r.landed);
+    $("barPer").textContent = money(L, r.per);
+    $("barTotal").textContent = money(L, r.landed);
+    var hasProfit = r.sell > 0 && r.qty > 0;
+    $("barProfit").textContent = hasProfit ? money(L, r.profitTotal) : "—";
+    $("barProfit").className = "val" + (hasProfit ? (r.profitTotal >= 0 ? " good" : " bad") : "");
+
+    var pb = $("profit");
+    if (hasProfit) {
+      var cls = r.profitTotal >= 0 ? "good" : "bad";
+      pb.innerHTML =
+        '<div class="tiles">' +
+        '<div><span class="lbl">Total</span><b class="' + cls + '">' + money(L, r.profitTotal) + '</b></div>' +
+        '<div><span class="lbl">Per piece</span><b class="' + cls + '">' + money(L, r.profit) + '</b></div>' +
+        '<div><span class="lbl">Margin</span><b class="' + cls + '">' + pct(r.margin) + '</b></div></div>' +
+        '<p class="sub">Revenue ' + money(L, r.revenue) + ' minus landed cost ' + money(L, r.landed) + '. Markup ' + pct(r.markup) + '.</p>';
+    } else if (!pb.querySelector("#addSell")) {
+      pb.innerHTML = '<button type="button" class="addsell" id="addSell">Add a sell price to see profit</button>';
+    }
+
+    var taxPart = s.recover ? 0 : r.tax;
+    var segs = [
+      ["Goods", r.goods, "var(--seg-goods)"],
+      ["Shipping", r.freight + r.ins, "var(--seg-ship)"],
+      ["Duty", r.duty, "var(--seg-duty)"],
+      ["Tax", taxPart, "var(--seg-tax)"],
+      ["Local", r.broker + r.deliv, "var(--seg-fees)"]
+    ];
+    var sum = segs.reduce(function (a, x) { return a + x[1]; }, 0);
+    $("stack").innerHTML = segs.map(function (x) {
+      var w = sum > 0 ? x[1] / sum * 100 : 0;
+      return '<span style="width:' + w.toFixed(2) + '%;background:' + x[2] + '"></span>';
+    }).join("");
+    $("legend").innerHTML = segs.map(function (x) {
+      return '<span><span class="sw" style="background:' + x[2] + '"></span>' + x[0] + ' ' + (sum > 0 ? (x[1] / sum * 100).toFixed(0) : 0) + '%</span>';
+    }).join("");
+    $("stack").setAttribute("aria-label", segs.map(function (x) {
+      return x[0] + " " + (sum > 0 ? (x[1] / sum * 100).toFixed(0) : 0) + "%";
+    }).join(", "));
+
+    function row(label, val, cls) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="n">' + money(L, val) + '</td></tr>';
+    }
+    var rows = "";
+    rows += row("Goods <small>" + r.qty + " pcs</small>", r.goods);
+    rows += row("Freight", r.freight);
+    rows += row("Insurance", r.ins);
+    rows += row("CIF value", r.cif, "sub");
+    rows += row("Duty <small>" + num(s.duty) + "%</small>", r.duty);
+    rows += row("Tax <small>" + num(s.tax) + "%</small>", r.tax);
+    rows += row("Brokerage and port", r.broker);
+    rows += row("Delivery and other", r.deliv);
+    if (s.recover) {
+      rows += row("Paid at import", r.paid, "sub");
+      rows += row("Tax claimed back", -r.tax);
+    }
+    rows += row("Landed cost", r.landed, "total");
+    $("tbl").querySelector("tbody").innerHTML = rows;
+
+    persistSoon();
+  }
+
+  /* ---------- inputs ---------- */
+  function fillInputs() {
+    setAll("[data-k]", function (el) {
+      var k = el.getAttribute("data-k");
+      if (el.type === "checkbox") el.checked = !!state[k];
+      else el.value = state[k] == null ? "" : state[k];
+    });
+  }
+  function bindInputs() {
+    setAll("[data-k]", function (el) {
+      var k = el.getAttribute("data-k");
+      var isSel = el.tagName === "SELECT", isChk = el.type === "checkbox";
+      el.addEventListener(isSel || isChk ? "change" : "input", function () {
+        state[k] = isChk ? el.checked : el.value;
+        if (k === "fx") { state.fxSrc = "manual"; state.fxDate = ""; fxFailed = false; }
+        if (isSel) onCurrencyChange(); else render();
+      });
+      if (!isSel && !isChk && el.getAttribute("inputmode")) {
+        el.addEventListener("focus", function () { try { el.select(); } catch (e) {} });
+      }
+    });
+  }
+  function fillCurrencies() {
+    var html = CURRENCIES.map(function (c) { return '<option value="' + c + '">' + c + "</option>"; }).join("");
+    $("buyCur").innerHTML = html;
+    $("localCur").innerHTML = html;
+  }
+  $("btnRate").addEventListener("click", updateRate);
+  $("profit").addEventListener("click", function (e) {
+    if (e.target.closest("#addSell")) { var el = $("sell"); el.scrollIntoView({ block: "center" }); el.focus(); }
+  });
+  $("bar").addEventListener("click", function () { $("results").scrollIntoView({ behavior: "smooth", block: "start" }); });
+
+  /* ---------- presets ---------- */
+  function renderPresets() {
+    var box = $("presets");
+    box.hidden = !mem.presets.length;
+    box.innerHTML = mem.presets.map(function (p, i) {
+      return '<span class="chip"><button type="button" data-apply="' + i + '">' + esc(p.name) +
+        '<small>' + p.duty + '% + ' + p.tax + '%</small></button>' +
+        '<button type="button" class="x" data-del="' + i + '" aria-label="Delete ' + esc(p.name) + '">×</button></span>';
+    }).join("");
+  }
+  $("btnPreset").addEventListener("click", function () {
+    var name = $("presetName").value.trim();
+    if (!name) { $("presetName").focus(); return; }
+    var p = { name: name, duty: num(state.duty), tax: num(state.tax) };
+    var idx = mem.presets.findIndex(function (x) { return x.name.toLowerCase() === name.toLowerCase(); });
+    if (idx >= 0) mem.presets[idx] = p; else mem.presets.push(p);
+    $("presetName").value = "";
+    document.querySelector("details.savepre").open = false;
+    persist(); renderPresets();
+  });
+  $("presets").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    if (b.hasAttribute("data-apply")) {
+      var p = mem.presets[+b.getAttribute("data-apply")];
+      if (!p) return;
+      state.duty = String(p.duty); state.tax = String(p.tax);
+      fillInputs(); render();
+    } else if (b.hasAttribute("data-del")) {
+      mem.presets.splice(+b.getAttribute("data-del"), 1);
+      persist(); renderPresets();
+    }
+  });
+
+  /* ---------- saved calculations ---------- */
+  function renderHistory() {
+    var ul = $("hist");
+    if (!mem.history.length) {
+      ul.innerHTML = '<li><p class="empty">Nothing saved yet.</p></li>';
+      return;
+    }
+    ul.innerHTML = mem.history.map(function (h, i) {
+      var c = h.s.localCur;
+      return '<li><div class="meta"><b>' + esc(h.name || "Untitled") + '</b>' +
+        '<span>' + esc(money(c, h.per)) + ' per piece · ' + esc(money(c, h.landed)) + ' · ' + esc(shortDate(h.ts)) + '</span></div>' +
+        '<button type="button" class="small" data-load="' + i + '">Open</button>' +
+        '<button type="button" class="small ghost" data-rm="' + i + '" aria-label="Delete">Delete</button></li>';
+    }).join("");
+  }
+  $("btnSave").addEventListener("click", function () {
+    var r = calc(state);
+    if (r.landed <= 0) { setStatus("Nothing to save yet."); return; }
+    mem.history.unshift({
+      ts: new Date().toISOString(), name: String(state.name || "").trim(),
+      s: JSON.parse(JSON.stringify(state)), landed: r.landed, per: r.per
+    });
+    mem.history = mem.history.slice(0, 20);
+    persist(); renderHistory(); setStatus("Saved");
+  });
+  $("hist").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    if (b.hasAttribute("data-load")) {
+      var h = mem.history[+b.getAttribute("data-load")];
+      if (!h) return;
+      state = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), h.s);
+      fxFailed = false; fxLoading = false;
+      fillInputs(); render(); window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (b.hasAttribute("data-rm")) {
+      mem.history.splice(+b.getAttribute("data-rm"), 1);
+      persist(); renderHistory();
+    }
+  });
+
+  /* ---------- copy and clear ---------- */
+  $("btnCopy").addEventListener("click", function () {
+    var s = state, r = lastResult, L = s.localCur;
+    var lines = [
+      "Landed cost" + (String(s.name).trim() ? ": " + String(s.name).trim() : ""),
+      "Goods: " + money(L, r.goods) + " (" + r.qty + " pcs)",
+      "Freight + insurance: " + money(L, r.freight + r.ins),
+      "CIF value: " + money(L, r.cif),
+      "Duty (" + num(s.duty) + "%): " + money(L, r.duty),
+      "Tax (" + num(s.tax) + "%" + (s.recover ? ", claimed back" : "") + "): " + money(L, r.tax),
+      "Local costs: " + money(L, r.broker + r.deliv),
+      "Total landed cost: " + money(L, r.landed),
+      "Per piece: " + money(L, r.per)
+    ];
+    if (r.sell > 0 && r.qty > 0) {
+      lines.push("Sell price: " + money(L, r.sell) + " per piece");
+      lines.push("Gross profit: " + money(L, r.profitTotal) + " total, " + money(L, r.profit) + " per piece, " + pct(r.margin) + " margin");
+    }
+    var text = lines.join("\n");
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+      setStatus(ok ? "Copied" : "Copy was blocked");
+    }
+    try { navigator.clipboard.writeText(text).then(function () { setStatus("Copied"); }, fallback); }
+    catch (e) { fallback(); }
+  });
+  $("btnReset").addEventListener("click", function () {
+    ["name", "price", "qty", "sell", "freight", "ins", "duty", "tax", "broker", "deliv"].forEach(function (k) { state[k] = ""; });
+    state.recover = false;
+    fillInputs(); render(); window.scrollTo({ top: 0, behavior: "smooth" });
+    $("price").focus();
+  });
+
+  /* ---------- install + offline ---------- */
+  var deferredInstall = null;
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault(); deferredInstall = e; $("btnInstall").hidden = false;
+  });
+  window.addEventListener("appinstalled", function () { $("btnInstall").hidden = true; deferredInstall = null; });
+  $("btnInstall").addEventListener("click", function () {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    deferredInstall.userChoice.then(function () { deferredInstall = null; $("btnInstall").hidden = true; });
+  });
+  if (LIVE && "serviceWorker" in navigator) {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").catch(function () {}); });
+  }
+
+  /* ---------- start ---------- */
+  fillCurrencies();
+  load();
+  if (mem.state) state = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), mem.state);
+  if (CURRENCIES.indexOf(state.buyCur) < 0) state.buyCur = "USD";
+  if (CURRENCIES.indexOf(state.localCur) < 0) state.localCur = "USD";
+  fillInputs();
+  bindInputs();
+  renderPresets();
+  renderHistory();
+  render();
+  if (LIVE && state.buyCur !== state.localCur && state.fxSrc !== "manual") updateRate();
+})();
+</script>
+</body>
+</html>
